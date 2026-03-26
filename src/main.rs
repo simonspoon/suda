@@ -372,9 +372,9 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
                         match entry {
                             Some(mut e) => {
                                 if let Some(ref dur) = check_stale {
-                                    let secs = state::parse_duration(dur).ok_or(
-                                        format!("Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"),
-                                    )?;
+                                    let secs = state::parse_duration(dur).ok_or(format!(
+                                        "Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"
+                                    ))?;
                                     state::apply_staleness(std::slice::from_mut(&mut e), secs);
                                 }
                                 if json {
@@ -395,9 +395,9 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
                         if !keys.is_empty() {
                             let mut keys = keys;
                             if let Some(ref dur) = check_stale {
-                                let secs = state::parse_duration(dur).ok_or(
-                                    format!("Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"),
-                                )?;
+                                let secs = state::parse_duration(dur).ok_or(format!(
+                                    "Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"
+                                ))?;
                                 state::apply_staleness(&mut keys, secs);
                             }
                             if json {
@@ -467,22 +467,20 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
                     display::state_table(&entries);
                 }
             }
-            StateCommands::Delete { name, key } => {
-                match key {
-                    Some(k) => {
-                        let deleted = state::delete_key(conn, &name, &k)?;
-                        if deleted {
-                            println!("Deleted '{name}:{k}'");
-                        } else {
-                            println!("Key '{k}' not found in '{name}'");
-                        }
-                    }
-                    None => {
-                        let deleted = state::delete(conn, &name)?;
-                        display::state_deleted(&name, deleted);
+            StateCommands::Delete { name, key } => match key {
+                Some(k) => {
+                    let deleted = state::delete_key(conn, &name, &k)?;
+                    if deleted {
+                        println!("Deleted '{name}:{k}'");
+                    } else {
+                        println!("Key '{k}' not found in '{name}'");
                     }
                 }
-            }
+                None => {
+                    let deleted = state::delete(conn, &name)?;
+                    display::state_deleted(&name, deleted);
+                }
+            },
         },
         Commands::Init => {
             println!("Database initialized at {:?}", db::db_path());

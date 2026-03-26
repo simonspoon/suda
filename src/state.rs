@@ -142,16 +142,21 @@ pub fn apply_staleness(entries: &mut [StateKeyEntry], threshold_secs: i64) {
             Some(v) => latest_timestamp(&entry.updated_at, v),
             None => entry.updated_at.clone(),
         };
-        let is_stale = if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(&latest, "%Y-%m-%d %H:%M:%S") {
-            let age = now.signed_duration_since(ts.and_utc());
-            age.num_seconds() >= threshold_secs
-        } else {
-            true // can't parse = treat as stale
-        };
+        let is_stale =
+            if let Ok(ts) = chrono::NaiveDateTime::parse_from_str(&latest, "%Y-%m-%d %H:%M:%S") {
+                let age = now.signed_duration_since(ts.and_utc());
+                age.num_seconds() >= threshold_secs
+            } else {
+                true // can't parse = treat as stale
+            };
         entry.stale = Some(is_stale);
     }
 }
 
 fn latest_timestamp(a: &str, b: &str) -> String {
-    if b > a { b.to_string() } else { a.to_string() }
+    if b > a {
+        b.to_string()
+    } else {
+        a.to_string()
+    }
 }

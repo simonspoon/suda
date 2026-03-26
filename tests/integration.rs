@@ -644,13 +644,7 @@ fn state_key_delete() {
         "building UI",
     ]);
 
-    let out = env.stdout(&[
-        "state",
-        "delete",
-        "session-state",
-        "--key",
-        "ordis-status",
-    ]);
+    let out = env.stdout(&["state", "delete", "session-state", "--key", "ordis-status"]);
     assert!(out.contains("Deleted"));
 
     let out = env.fails(&["state", "get", "session-state", "--key", "ordis-status"]);
