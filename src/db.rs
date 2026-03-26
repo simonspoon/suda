@@ -51,6 +51,15 @@ fn initialize(conn: &Connection) -> Result<()> {
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS state_keys (
+            namespace TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            verified_at TEXT,
+            PRIMARY KEY (namespace, key)
+        );
         ",
     )?;
 

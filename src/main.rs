@@ -150,21 +150,38 @@ enum ProjectCommands {
 enum StateCommands {
     /// Get a state value
     Get {
-        /// State key
-        key: String,
+        /// State namespace (e.g. session-state)
+        name: String,
+        /// Specific key within the namespace
+        #[arg(long)]
+        key: Option<String>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Flag entries as stale if older than this duration (e.g. 24h, 30m, 7d)
+        #[arg(long)]
+        check_stale: Option<String>,
     },
     /// Set a state value
     Set {
-        /// State key
-        key: String,
+        /// State namespace (e.g. session-state)
+        name: String,
         /// State value (or use --stdin to read from stdin)
         value: Option<String>,
+        /// Specific key within the namespace
+        #[arg(long)]
+        key: Option<String>,
         /// Read value from stdin
         #[arg(long)]
         stdin: bool,
+    },
+    /// Verify a key (update its verified_at timestamp)
+    Verify {
+        /// State namespace
+        name: String,
+        /// Key to verify
+        #[arg(long)]
+        key: String,
     },
     /// List all state entries
     List {
@@ -174,8 +191,11 @@ enum StateCommands {
     },
     /// Delete a state key
     Delete {
-        /// State key
-        key: String,
+        /// State namespace
+        name: String,
+        /// Specific key within the namespace
+        #[arg(long)]
+        key: Option<String>,
     },
 }
 
@@ -339,30 +359,105 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
             }
         },
         Commands::State { command } => match command {
-            StateCommands::Get { key, json } => {
-                let entry = state::get(conn, &key)?;
-                match entry {
-                    Some(e) => {
-                        if json {
-                            display::state_json(&[e]);
-                        } else {
-                            display::state_detail(&e);
+            StateCommands::Get {
+                name,
+                key,
+                json,
+                check_stale,
+            } => {
+                match key {
+                    Some(k) => {
+                        // Get a specific key from the namespace
+                        let entry = state::get_key(conn, &name, &k)?;
+                        match entry {
+                            Some(mut e) => {
+                                if let Some(ref dur) = check_stale {
+                                    let secs = state::parse_duration(dur).ok_or(
+                                        format!("Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"),
+                                    )?;
+                                    state::apply_staleness(std::slice::from_mut(&mut e), secs);
+                                }
+                                if json {
+                                    display::state_key_json(&[e]);
+                                } else {
+                                    display::state_key_detail(&e);
+                                }
+                            }
+                            None => {
+                                eprintln!("Key '{k}' not found in '{name}'");
+                                process::exit(1);
+                            }
                         }
                     }
                     None => {
-                        eprintln!("Key '{key}' not found");
-                        process::exit(1);
+                        // No --key: try structured keys first, fall back to legacy
+                        let keys = state::get_all_keys(conn, &name)?;
+                        if !keys.is_empty() {
+                            let mut keys = keys;
+                            if let Some(ref dur) = check_stale {
+                                let secs = state::parse_duration(dur).ok_or(
+                                    format!("Invalid duration '{dur}'. Use e.g. 24h, 30m, 7d"),
+                                )?;
+                                state::apply_staleness(&mut keys, secs);
+                            }
+                            if json {
+                                display::state_key_json(&keys);
+                            } else {
+                                for e in &keys {
+                                    display::state_key_detail(e);
+                                    println!();
+                                }
+                            }
+                        } else {
+                            // Fall back to legacy flat state
+                            let entry = state::get(conn, &name)?;
+                            match entry {
+                                Some(e) => {
+                                    if json {
+                                        display::state_json(&[e]);
+                                    } else {
+                                        display::state_detail(&e);
+                                    }
+                                }
+                                None => {
+                                    eprintln!("Key '{name}' not found");
+                                    process::exit(1);
+                                }
+                            }
+                        }
                     }
                 }
             }
-            StateCommands::Set { key, value, stdin } => {
+            StateCommands::Set {
+                name,
+                value,
+                key,
+                stdin,
+            } => {
                 let value = if stdin {
                     read_stdin()
                 } else {
                     value.ok_or("Value is required (provide as argument or use --stdin)")?
                 };
-                state::set(conn, &key, &value)?;
-                display::state_set(&key);
+                match key {
+                    Some(k) => {
+                        state::set_key(conn, &name, &k, &value)?;
+                        display::state_set(&format!("{name}:{k}"));
+                    }
+                    None => {
+                        state::set(conn, &name, &value)?;
+                        display::state_set(&name);
+                    }
+                }
+            }
+            StateCommands::Verify { name, key } => {
+                let found = state::verify_key(conn, &name, &key)?;
+                if found {
+                    println!("Verified '{name}:{key}'");
+                } else {
+                    eprintln!("Key '{key}' not found in '{name}'");
+                    process::exit(1);
+                }
             }
             StateCommands::List { json } => {
                 let entries = state::list(conn)?;
@@ -372,9 +467,21 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
                     display::state_table(&entries);
                 }
             }
-            StateCommands::Delete { key } => {
-                let deleted = state::delete(conn, &key)?;
-                display::state_deleted(&key, deleted);
+            StateCommands::Delete { name, key } => {
+                match key {
+                    Some(k) => {
+                        let deleted = state::delete_key(conn, &name, &k)?;
+                        if deleted {
+                            println!("Deleted '{name}:{k}'");
+                        } else {
+                            println!("Key '{k}' not found in '{name}'");
+                        }
+                    }
+                    None => {
+                        let deleted = state::delete(conn, &name)?;
+                        display::state_deleted(&name, deleted);
+                    }
+                }
             }
         },
         Commands::Init => {

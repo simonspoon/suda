@@ -1,6 +1,6 @@
 use crate::memory::Memory;
 use crate::project::Project;
-use crate::state::StateEntry;
+use crate::state::{StateEntry, StateKeyEntry};
 
 pub fn memory_table(memories: &[Memory]) {
     if memories.is_empty() {
@@ -134,6 +134,23 @@ pub fn state_deleted(key: &str, deleted: bool) {
     } else {
         println!("Key '{key}' not found");
     }
+}
+
+pub fn state_key_detail(entry: &StateKeyEntry) {
+    println!("[{}] {}", entry.key, entry.value);
+    print!("  updated: {}", entry.updated_at);
+    if let Some(ref v) = entry.verified_at {
+        print!("  verified: {v}");
+    }
+    if let Some(true) = entry.stale {
+        print!("  [STALE]");
+    }
+    println!();
+}
+
+pub fn state_key_json(entries: &[StateKeyEntry]) {
+    let json = serde_json::to_string_pretty(entries).expect("Failed to serialize state keys");
+    println!("{json}");
 }
 
 pub fn export_json(memories: &[Memory]) {

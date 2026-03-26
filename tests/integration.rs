@@ -459,6 +459,257 @@ fn init_creates_db() {
     assert!(env.dir.join("suda.db").exists());
 }
 
+// --- Structured state keys ---
+
+#[test]
+fn state_key_set_and_get() {
+    let env = TestEnv::new("state-key-set-get");
+
+    // Set a key within a namespace
+    let out = env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "Fourth commit, not pushed",
+    ]);
+    assert!(out.contains("Set 'session-state:ordis-status'"));
+
+    // Get that specific key
+    let out = env.stdout(&["state", "get", "session-state", "--key", "ordis-status"]);
+    assert!(out.contains("Fourth commit, not pushed"));
+    assert!(out.contains("ordis-status"));
+}
+
+#[test]
+fn state_key_get_all() {
+    let env = TestEnv::new("state-key-get-all");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building UI",
+    ]);
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "wisp-status",
+        "v0.3.0 pushed",
+    ]);
+
+    // Get all keys in namespace
+    let out = env.stdout(&["state", "get", "session-state"]);
+    assert!(out.contains("ordis-status"));
+    assert!(out.contains("wisp-status"));
+    assert!(out.contains("building UI"));
+    assert!(out.contains("v0.3.0 pushed"));
+}
+
+#[test]
+fn state_key_json_output() {
+    let env = TestEnv::new("state-key-json");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "Fourth commit",
+    ]);
+
+    let out = env.stdout(&[
+        "state",
+        "get",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "--json",
+    ]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0]["key"], "ordis-status");
+    assert_eq!(parsed[0]["value"], "Fourth commit");
+    assert_eq!(parsed[0]["namespace"], "session-state");
+    assert!(parsed[0]["updated_at"].is_string());
+}
+
+#[test]
+fn state_key_verify() {
+    let env = TestEnv::new("state-key-verify");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building UI",
+    ]);
+
+    // Verify the key
+    let out = env.stdout(&["state", "verify", "session-state", "--key", "ordis-status"]);
+    assert!(out.contains("Verified"));
+
+    // Check verified_at appears in JSON
+    let out = env.stdout(&[
+        "state",
+        "get",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "--json",
+    ]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert!(parsed[0]["verified_at"].is_string());
+}
+
+#[test]
+fn state_key_verify_nonexistent() {
+    let env = TestEnv::new("state-key-verify-none");
+    let out = env.fails(&["state", "verify", "session-state", "--key", "nope"]);
+    assert!(out.contains("not found"));
+}
+
+#[test]
+fn state_key_check_stale_fresh() {
+    let env = TestEnv::new("state-key-stale-fresh");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building UI",
+    ]);
+
+    // With a 24h threshold, a just-set key should be fresh
+    let out = env.stdout(&[
+        "state",
+        "get",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "--json",
+        "--check-stale",
+        "24h",
+    ]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["stale"], false);
+}
+
+#[test]
+fn state_key_check_stale_expired() {
+    let env = TestEnv::new("state-key-stale-expired");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building UI",
+    ]);
+
+    // With 0-second threshold, should be stale
+    let out = env.stdout(&[
+        "state",
+        "get",
+        "session-state",
+        "--json",
+        "--check-stale",
+        "0s",
+    ]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["stale"], true);
+}
+
+#[test]
+fn state_key_delete() {
+    let env = TestEnv::new("state-key-delete");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building UI",
+    ]);
+
+    let out = env.stdout(&[
+        "state",
+        "delete",
+        "session-state",
+        "--key",
+        "ordis-status",
+    ]);
+    assert!(out.contains("Deleted"));
+
+    let out = env.fails(&["state", "get", "session-state", "--key", "ordis-status"]);
+    assert!(out.contains("not found"));
+}
+
+#[test]
+fn state_key_upsert() {
+    let env = TestEnv::new("state-key-upsert");
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "first value",
+    ]);
+
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "updated value",
+    ]);
+
+    let out = env.stdout(&["state", "get", "session-state", "--key", "ordis-status"]);
+    assert!(out.contains("updated value"));
+    assert!(!out.contains("first value"));
+}
+
+#[test]
+fn state_legacy_and_keys_coexist() {
+    let env = TestEnv::new("state-coexist");
+
+    // Set legacy flat state
+    env.stdout(&["state", "set", "session-state", "legacy blob of text"]);
+
+    // Set structured keys in same namespace
+    env.stdout(&[
+        "state",
+        "set",
+        "session-state",
+        "--key",
+        "ordis-status",
+        "building",
+    ]);
+
+    // Get without --key returns structured keys (they take priority)
+    let out = env.stdout(&["state", "get", "session-state"]);
+    assert!(out.contains("ordis-status"));
+
+    // Legacy state still accessible via list
+    let out = env.stdout(&["state", "list"]);
+    assert!(out.contains("session-state"));
+}
+
 // --- Isolation ---
 
 #[test]
