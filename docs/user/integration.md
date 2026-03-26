@@ -71,7 +71,11 @@ suda store --type reference --name "ci-dashboard" --description "CI system" "htt
 
 ## Session state
 
-The state subsystem is a simple key-value store. Its primary agent use case is persisting a session summary so the next conversation can pick up where the previous one left off.
+The state subsystem supports two modes: a legacy flat key-value store and a structured per-key store with namespaces, verification, and staleness detection.
+
+### Flat state (legacy)
+
+The simplest mode stores a single value under a namespace name. This is the original behavior and remains useful for storing a free-text session summary.
 
 At the end of a session, the agent writes a summary:
 
@@ -85,7 +89,7 @@ At the start of the next session, the agent reads it back:
 suda state get session-state
 ```
 
-The state store uses upsert semantics -- setting a key that already exists overwrites the previous value. This keeps session-state always pointing to the most recent summary.
+The flat state store uses upsert semantics -- setting a key that already exists overwrites the previous value.
 
 The `--stdin` flag allows writing longer or multi-line values:
 
@@ -95,7 +99,47 @@ Line two
 Line three" | suda state set session-state --stdin
 ```
 
-Other useful state keys beyond `session-state` are up to you. The store accepts any string key.
+### Structured per-key state
+
+For richer session tracking, agents can store multiple keys within a namespace using the `--key` flag:
+
+```bash
+suda state set session-state --key current-task "Implement error recovery"
+suda state set session-state --key last-file "src/parser.rs"
+suda state set session-state --key blockers "Waiting on upstream API spec"
+```
+
+Retrieve all keys in a namespace:
+
+```bash
+suda state get session-state --json
+```
+
+Or a specific key:
+
+```bash
+suda state get session-state --key current-task
+```
+
+When `state get` is called without `--key`, it first checks for structured keys in the namespace. If none exist, it falls back to the legacy flat state entry.
+
+### Verification and staleness
+
+Structured state keys track two timestamps: `updated_at` (set on write) and `verified_at` (set explicitly). Use `--check-stale` to flag entries that are older than a given duration:
+
+```bash
+suda state get session-state --check-stale 24h --json
+```
+
+This compares the current time against the more recent of `updated_at` and `verified_at`. Entries older than the threshold are marked with `"stale": true` in the output.
+
+To mark a key as still-current without changing its value, use `verify`:
+
+```bash
+suda state verify session-state --key current-task
+```
+
+Supported duration formats: `30m` (minutes), `24h` (hours), `7d` (days), `3600s` (seconds).
 
 ## Project registry
 

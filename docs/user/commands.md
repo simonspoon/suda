@@ -153,41 +153,73 @@ suda project show my-app --json
 
 ## state
 
-Manage key-value session state.
+Manage session state. Supports both legacy flat key-value state and structured per-key namespaced state with verification and staleness detection.
 
 ### state get
 
 ```
-suda state get <KEY> [OPTIONS]
+suda state get <NAME> [OPTIONS]
 ```
 
-Retrieve a state value by key.
+Retrieve state by namespace. Without `--key`, returns all structured keys in the namespace (falling back to the legacy flat state entry if no structured keys exist). With `--key`, returns a specific key within the namespace.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `KEY` | string (positional) | *required* | State key. |
+| `NAME` | string (positional) | *required* | State namespace (e.g. `session-state`). |
+| `--key` | string | — | Specific key within the namespace. |
 | `--json` | flag | `false` | Output as JSON. |
+| `--check-stale` | string | — | Flag entries as stale if older than this duration (e.g. `24h`, `30m`, `7d`). Compares against the more recent of `updated_at` and `verified_at`. |
 
 ```sh
+# Get all keys in a namespace
 suda state get session-state --json
+
+# Get a specific key
+suda state get session-state --key current-task --json
+
+# Check for stale entries (older than 24 hours)
+suda state get session-state --check-stale 24h --json
 ```
 
 ### state set
 
 ```
-suda state set <KEY> [VALUE] [OPTIONS]
+suda state set <NAME> [VALUE] [OPTIONS]
 ```
 
-Set a state value. The value can be provided as a positional argument or piped via `--stdin`.
+Set a state value. Without `--key`, writes to the legacy flat state store. With `--key`, writes to the structured per-key store within the given namespace. The value can be provided as a positional argument or piped via `--stdin`.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `KEY` | string (positional) | *required* | State key. |
+| `NAME` | string (positional) | *required* | State namespace (e.g. `session-state`). |
 | `VALUE` | string (positional) | — | State value. Required unless `--stdin` is used. |
+| `--key` | string | — | Specific key within the namespace. |
 | `--stdin` | flag | `false` | Read value from stdin instead of the positional argument. |
 
 ```sh
+# Legacy flat state
 suda state set session-state "Completed refactor of auth module"
+
+# Structured per-key state
+suda state set session-state --key current-task "Implement error recovery"
+suda state set session-state --key last-file "src/parser.rs"
+```
+
+### state verify
+
+```
+suda state verify <NAME> --key <KEY>
+```
+
+Update the `verified_at` timestamp on a structured state key without changing its value. Useful for marking state as still-current, which resets the staleness clock used by `--check-stale`.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `NAME` | string (positional) | *required* | State namespace. |
+| `--key` | string | *required* | Key to verify. |
+
+```sh
+suda state verify session-state --key current-task
 ```
 
 ### state list
@@ -196,7 +228,7 @@ suda state set session-state "Completed refactor of auth module"
 suda state list [OPTIONS]
 ```
 
-List all state entries.
+List all legacy flat state entries.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -209,17 +241,22 @@ suda state list --json
 ### state delete
 
 ```
-suda state delete <KEY>
+suda state delete <NAME> [OPTIONS]
 ```
 
-Delete a state entry by key.
+Delete a state entry. Without `--key`, deletes the legacy flat state entry. With `--key`, deletes a specific key from the structured per-key store.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `KEY` | string (positional) | *required* | State key to delete. |
+| `NAME` | string (positional) | *required* | State namespace. |
+| `--key` | string | — | Specific key within the namespace to delete. |
 
 ```sh
+# Delete legacy flat state
 suda state delete session-state
+
+# Delete a specific structured key
+suda state delete session-state --key current-task
 ```
 
 ## init

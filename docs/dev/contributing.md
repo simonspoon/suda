@@ -66,7 +66,7 @@ src/
   memory.rs  -- Memory CRUD operations: store, recall (FTS and recent), update, forget, export, import
   display.rs -- All output formatting: tables, detail views, JSON serialization, markdown export
   project.rs -- Project registry CRUD: add, remove, show, list
-  state.rs   -- Key-value state store: get, set, list, delete
+  state.rs   -- State store: legacy flat (get, set, list, delete) and per-key namespaced (get_key, set_key, get_all_keys, delete_key, verify_key, staleness)
 tests/
   integration.rs -- End-to-end tests using TestEnv for process-level isolation
 ```
@@ -188,4 +188,4 @@ fn row_to_memory(row: &rusqlite::Row<'_>) -> Result<Memory> {
 }
 ```
 
-This function is passed as a callback to `stmt.query_map()`. The same pattern appears in `project.rs` (`row_to_project`) and `state.rs` (`row_to_entry`). Column order must match the SELECT clause.
+This function is passed as a callback to `stmt.query_map()`. The same pattern appears in `project.rs` (`row_to_project`) and `state.rs` (`row_to_entry` for legacy state, `row_to_key_entry` for structured state). Column order must match the SELECT clause.

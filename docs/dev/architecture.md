@@ -10,7 +10,7 @@ Suda is a Rust CLI for structured memory and knowledge management, built for AI 
 | `main` | `src/main.rs` | CLI argument parsing (clap), command enum definitions, top-level command routing via `run()` |
 | `memory` | `src/memory.rs` | `Memory` struct, CRUD operations (store/recall/update/forget), FTS5 search, export/import |
 | `project` | `src/project.rs` | `Project` struct, project registry operations (add/remove/show/list) |
-| `state` | `src/state.rs` | `StateEntry` struct, key-value state operations (get/set/list/delete) with upsert |
+| `state` | `src/state.rs` | `StateEntry` and `StateKeyEntry` structs, legacy flat state (get/set/list/delete), per-key namespaced state (get_key/set_key/get_all_keys/delete_key/verify_key), staleness detection |
 | `display` | `src/display.rs` | All output formatting: tables, detail views, JSON serialization, markdown export |
 
 ### Module dependencies
@@ -20,7 +20,7 @@ main.rs
   +-- db        (connect)
   +-- memory    (store, recall, update, forget, export, import)
   +-- project   (add, remove, show, list)
-  +-- state     (get, set, list, delete)
+  +-- state     (get, set, list, delete, get_key, set_key, get_all_keys, delete_key, verify_key)
   +-- display   (all output functions)
 ```
 
@@ -95,7 +95,22 @@ CREATE TABLE IF NOT EXISTS state (
 );
 ```
 
-Uses `key` as a natural primary key (no autoincrement). The `set` operation uses `INSERT ... ON CONFLICT(key) DO UPDATE` for upsert behavior (`src/state.rs:22`).
+Uses `key` as a natural primary key (no autoincrement). The `set` operation uses `INSERT ... ON CONFLICT(key) DO UPDATE` for upsert behavior.
+
+### state_keys
+
+```sql
+CREATE TABLE IF NOT EXISTS state_keys (
+    namespace TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    verified_at TEXT,
+    PRIMARY KEY (namespace, key)
+);
+```
+
+Structured per-key state with namespace scoping. The composite primary key `(namespace, key)` allows multiple keys within a namespace. The `verified_at` column is nullable and set explicitly via `state verify` to track when a key was last confirmed as still-current. The `set_key` operation uses `INSERT ... ON CONFLICT(namespace, key) DO UPDATE` for upsert behavior.
 
 ## FTS5 Integration
 
@@ -190,7 +205,22 @@ Derives: `Debug`, `Clone`, `Serialize`
 | `value` | `String` | `value` (TEXT NOT NULL) |
 | `updated_at` | `String` | `updated_at` (TEXT NOT NULL, default now) |
 
-`StateEntry` implements `Serialize` but not `Deserialize`. The `set` function uses raw parameters rather than deserializing into the struct (`src/state.rs:20-27`).
+`StateEntry` implements `Serialize` but not `Deserialize`. The `set` function uses raw parameters rather than deserializing into the struct.
+
+### StateKeyEntry (`src/state.rs:11-21`)
+
+Derives: `Debug`, `Clone`, `Serialize`
+
+| Field | Rust Type | Serde | DB Column |
+|-------|-----------|-------|-----------|
+| `namespace` | `String` | `namespace` | `namespace` (TEXT NOT NULL) |
+| `key` | `String` | `key` | `key` (TEXT NOT NULL) |
+| `value` | `String` | `value` | `value` (TEXT NOT NULL) |
+| `updated_at` | `String` | `updated_at` | `updated_at` (TEXT NOT NULL, default now) |
+| `verified_at` | `Option<String>` | `verified_at` (skip if None) | `verified_at` (TEXT, nullable) |
+| `stale` | `Option<bool>` | `stale` (skip if None) | *computed, not stored* |
+
+The `verified_at` and `stale` fields use `#[serde(skip_serializing_if = "Option::is_none")]` to omit them from JSON when not set. The `stale` field is computed at query time by `apply_staleness()` and is never persisted to the database.
 
 ### MemoryType enum (`src/main.rs:182-198`)
 
