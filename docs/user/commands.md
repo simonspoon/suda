@@ -29,7 +29,12 @@ suda store "Always use explicit error handling" --type user --name error-style -
 suda recall [QUERY] [OPTIONS]
 ```
 
-Search and retrieve memories. When a query is provided, it uses FTS5 full-text search. Without a query, returns all memories matching the filters.
+Search and retrieve memories. When a query is provided, it uses FTS5 full-text search. Without a query, returns all memories matching the filters. Each memory includes a `strength` field (default 1) that tracks reinforcement frequency.
+
+**Output modes:**
+- **Table** (default): columns are ID, TYPE, NAME, DESCRIPTION, STR (strength), PROJECT.
+- **Detail** (single result from a query): shows all fields including `Strength`.
+- **JSON** (`--json`): each memory object includes a `"strength"` integer field.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -63,6 +68,29 @@ Update an existing memory by its ID. All fields are optional; only provided fiel
 ```sh
 suda update 42 --content "Updated preference" --description "Revised coding style"
 ```
+
+## reinforce
+
+```
+suda reinforce <ID> [OPTIONS]
+```
+
+Increment a memory's strength counter, or set it to an explicit value. Strength tracks how frequently a memory has been reinforced -- higher values indicate more important or frequently-confirmed memories. Also updates the memory's `updated_at` timestamp.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `ID` | integer (positional) | *required* | Memory ID to reinforce. |
+| `--set` | integer | — | Set strength to this exact value instead of incrementing by 1. |
+
+```sh
+# Increment strength by 1
+suda reinforce 42
+
+# Set strength to a specific value (useful for merging duplicates)
+suda reinforce 42 --set 5
+```
+
+Output: `Reinforced memory 42 (strength: 3)`
 
 ## forget
 
@@ -277,7 +305,7 @@ suda init
 suda export [OPTIONS]
 ```
 
-Export memories, optionally filtered by type or project.
+Export memories, optionally filtered by type or project. Exported data includes the `strength` field for each memory. In markdown format, strength is shown in the metadata line alongside type and project.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -295,7 +323,7 @@ suda export --type user --format md
 suda import <FILE>
 ```
 
-Import memories from a JSON file.
+Import memories from a JSON file. If a memory in the import file has no `strength` field, it defaults to 1 (backward-compatible with exports from older versions).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

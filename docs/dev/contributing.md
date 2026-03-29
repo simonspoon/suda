@@ -63,7 +63,7 @@ Key methods:
 src/
   main.rs    -- CLI definition (Cli, Commands, MemoryType enums), argument parsing, run() dispatch
   db.rs      -- Database connection, path resolution (SUDA_HOME env var), schema initialization with FTS5
-  memory.rs  -- Memory CRUD operations: store, recall (FTS and recent), update, forget, export, import
+  memory.rs  -- Memory CRUD operations: store, recall (FTS and recent), update, reinforce, forget, export, import
   display.rs -- All output formatting: tables, detail views, JSON serialization, markdown export
   project.rs -- Project registry CRUD: add, remove, show, list
   state.rs   -- State store: legacy flat (get, set, list, delete) and per-key namespaced (get_key, set_key, get_all_keys, delete_key, verify_key, staleness)
@@ -182,8 +182,9 @@ fn row_to_memory(row: &rusqlite::Row<'_>) -> Result<Memory> {
         memory_type: row.get(3)?,
         content: row.get(4)?,
         project: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
+        strength: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
     })
 }
 ```

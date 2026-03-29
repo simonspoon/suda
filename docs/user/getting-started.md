@@ -60,6 +60,20 @@ Update an existing memory by its ID (shown when you store or recall):
 suda update 1 --content "Switched to Helix editor with custom keybindings"
 ```
 
+### Reinforce a memory
+
+Increment a memory's strength to signal importance:
+
+```
+suda reinforce 1
+```
+
+Each call increases strength by 1. To set an explicit value:
+
+```
+suda reinforce 1 --set 5
+```
+
 ### Forget a memory
 
 Delete a memory by its ID:

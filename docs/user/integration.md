@@ -189,6 +189,14 @@ suda state list --json
 
 Without `--json`, output is formatted as tables or detail views intended for terminal use. Agents should always pass `--json` to get structured data they can parse reliably.
 
+### Strength field
+
+Every memory includes a `strength` integer field (default 1). In JSON output, each memory object contains `"strength": <N>`. Higher strength indicates a more frequently reinforced memory. Agents can use strength to:
+
+- Prioritize high-strength memories when context is limited
+- Identify memories the user has repeatedly confirmed as important
+- Preserve reinforcement counts when consolidating duplicate memories (via `reinforce --set`)
+
 ## Deduplication
 
 Agents create memories frequently, and without care they will store the same information repeatedly. Before storing a new memory, search for existing matches:
@@ -204,6 +212,21 @@ suda update 42 --content "Rust (confirmed again)"
 ```
 
 The `update` command accepts `--name`, `--description`, `--content`, `--type`, and `--project` flags. Only the fields you pass are changed.
+
+If the existing memory is correct and just needs reinforcing, increment its strength:
+
+```bash
+suda reinforce 42
+```
+
+When merging duplicate memories, use `reinforce --set` to combine their strengths:
+
+```bash
+# Memory 42 has strength 3, memory 58 has strength 2
+# After merging content into memory 42:
+suda reinforce 42 --set 5
+suda forget 58
+```
 
 If the memory is no longer relevant, remove it:
 

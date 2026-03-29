@@ -8,7 +8,7 @@ Suda is a Rust CLI for structured memory and knowledge management, built for AI 
 |--------|------|---------|
 | `db` | `src/db.rs` | Database path resolution, connection setup, schema initialization, FTS5 virtual table and trigger creation |
 | `main` | `src/main.rs` | CLI argument parsing (clap), command enum definitions, top-level command routing via `run()` |
-| `memory` | `src/memory.rs` | `Memory` struct, CRUD operations (store/recall/update/forget), FTS5 search, export/import |
+| `memory` | `src/memory.rs` | `Memory` struct, CRUD operations (store/recall/update/forget/reinforce), FTS5 search, export/import |
 | `project` | `src/project.rs` | `Project` struct, project registry operations (add/remove/show/list) |
 | `state` | `src/state.rs` | `StateEntry` and `StateKeyEntry` structs, legacy flat state (get/set/list/delete), per-key namespaced state (get_key/set_key/get_all_keys/delete_key/verify_key), staleness detection |
 | `display` | `src/display.rs` | All output formatting: tables, detail views, JSON serialization, markdown export |
@@ -18,7 +18,7 @@ Suda is a Rust CLI for structured memory and knowledge management, built for AI 
 ```
 main.rs
   +-- db        (connect)
-  +-- memory    (store, recall, update, forget, export, import)
+  +-- memory    (store, recall, update, reinforce, forget, export, import)
   +-- project   (add, remove, show, list)
   +-- state     (get, set, list, delete, get_key, set_key, get_all_keys, delete_key, verify_key)
   +-- display   (all output functions)
@@ -63,12 +63,17 @@ CREATE TABLE IF NOT EXISTS memories (
     type TEXT NOT NULL CHECK(type IN ('user', 'feedback', 'project', 'reference')),
     content TEXT NOT NULL,
     project TEXT,
+    strength INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
-The `type` column is constrained to four values: `user`, `feedback`, `project`, `reference`. The `project` column is nullable (memories can exist without a project association).
+The `type` column is constrained to four values: `user`, `feedback`, `project`, `reference`. The `project` column is nullable (memories can exist without a project association). The `strength` column tracks reinforcement frequency (default 1); it is incremented by `reinforce` and can be set to an explicit value via `reinforce --set`.
+
+#### Migration
+
+Existing databases that lack the `strength` column are migrated automatically. On connect, `initialize()` checks `pragma_table_info('memories')` for the column and runs `ALTER TABLE memories ADD COLUMN strength INTEGER NOT NULL DEFAULT 1` if it is missing (`src/db.rs:68-75`). All pre-existing memories receive strength 1.
 
 ### projects
 
@@ -163,7 +168,7 @@ When `recall` is called with a query string, it uses FTS5 `MATCH` with `ORDER BY
 
 ## Key Types
 
-### Memory (`src/memory.rs:4-15`)
+### Memory (`src/memory.rs:8-21`)
 
 Derives: `Debug`, `Clone`, `Serialize`, `Deserialize`
 
@@ -175,10 +180,11 @@ Derives: `Debug`, `Clone`, `Serialize`, `Deserialize`
 | `memory_type` | `String` | `type` (renamed) | `type` (TEXT NOT NULL, CHECK constraint) |
 | `content` | `String` | `content` | `content` (TEXT NOT NULL) |
 | `project` | `Option<String>` | `project` | `project` (TEXT, nullable) |
+| `strength` | `i64` | `strength` (default 1) | `strength` (INTEGER NOT NULL, default 1) |
 | `created_at` | `String` | `created_at` | `created_at` (TEXT NOT NULL, default now) |
 | `updated_at` | `String` | `updated_at` | `updated_at` (TEXT NOT NULL, default now) |
 
-The `memory_type` field is renamed to `type` in JSON via `#[serde(rename = "type")]` (`src/memory.rs:9`).
+The `memory_type` field is renamed to `type` in JSON via `#[serde(rename = "type")]`. The `strength` field uses `#[serde(default = "default_strength")]` so that importing JSON without a `strength` key defaults to 1 (backward compatibility with older exports).
 
 ### Project (`src/project.rs:4-12`)
 
