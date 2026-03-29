@@ -77,6 +77,14 @@ enum Commands {
         #[arg(long)]
         project: Option<String>,
     },
+    /// Reinforce a memory (increment strength, or set explicit value)
+    Reinforce {
+        /// Memory ID
+        id: i64,
+        /// Set strength to an explicit value instead of incrementing
+        #[arg(long)]
+        set: Option<i64>,
+    },
     /// Delete a memory
     Forget {
         /// Memory ID
@@ -315,6 +323,19 @@ fn run(command: Commands, conn: &rusqlite::Connection) -> Result<(), Box<dyn std
                 project.as_deref(),
             )?;
             display::memory_updated(id, updated);
+        }
+        Commands::Reinforce { id, set } => {
+            let reinforced = match set {
+                Some(value) => memory::reinforce_set(conn, id, value)?,
+                None => memory::reinforce(conn, id)?,
+            };
+            if reinforced {
+                let m =
+                    memory::get(conn, id)?.expect("memory existed for reinforce but not for get");
+                display::memory_reinforced(id, m.strength);
+            } else {
+                display::memory_not_found(id);
+            }
         }
         Commands::Forget { id } => {
             let deleted = memory::forget(conn, id)?;

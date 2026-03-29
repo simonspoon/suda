@@ -8,17 +8,17 @@ pub fn memory_table(memories: &[Memory]) {
         return;
     }
     println!(
-        "{:<6} {:<12} {:<30} {:<40} {:<12}",
-        "ID", "TYPE", "NAME", "DESCRIPTION", "PROJECT"
+        "{:<6} {:<12} {:<30} {:<36} {:<5} {:<12}",
+        "ID", "TYPE", "NAME", "DESCRIPTION", "STR", "PROJECT"
     );
-    println!("{}", "-".repeat(100));
+    println!("{}", "-".repeat(101));
     for m in memories {
         let project = m.project.as_deref().unwrap_or("-");
-        let desc = truncate(&m.description, 38);
+        let desc = truncate(&m.description, 34);
         let name = truncate(&m.name, 28);
         println!(
-            "{:<6} {:<12} {:<30} {:<40} {:<12}",
-            m.id, m.memory_type, name, desc, project
+            "{:<6} {:<12} {:<30} {:<36} {:<5} {:<12}",
+            m.id, m.memory_type, name, desc, m.strength, project
         );
     }
 }
@@ -29,6 +29,7 @@ pub fn memory_detail(m: &Memory) {
     println!("Type:        {}", m.memory_type);
     println!("Description: {}", m.description);
     println!("Project:     {}", m.project.as_deref().unwrap_or("(none)"));
+    println!("Strength:    {}", m.strength);
     println!("Created:     {}", m.created_at);
     println!("Updated:     {}", m.updated_at);
     println!("---");
@@ -50,6 +51,14 @@ pub fn memory_updated(id: i64, updated: bool) {
     } else {
         println!("Memory {id} not found");
     }
+}
+
+pub fn memory_reinforced(id: i64, strength: i64) {
+    println!("Reinforced memory {id} (strength: {strength})");
+}
+
+pub fn memory_not_found(id: i64) {
+    println!("Memory {id} not found");
 }
 
 pub fn memory_forgotten(id: i64, deleted: bool) {
@@ -162,9 +171,10 @@ pub fn export_markdown(memories: &[Memory]) {
     for m in memories {
         println!("## {} (ID: {})", m.name, m.id);
         println!(
-            "**Type:** {} | **Project:** {}",
+            "**Type:** {} | **Project:** {} | **Strength:** {}",
             m.memory_type,
-            m.project.as_deref().unwrap_or("none")
+            m.project.as_deref().unwrap_or("none"),
+            m.strength
         );
         println!();
         println!("> {}", m.description);

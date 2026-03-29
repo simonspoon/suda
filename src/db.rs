@@ -33,6 +33,7 @@ fn initialize(conn: &Connection) -> Result<()> {
             type TEXT NOT NULL CHECK(type IN ('user', 'feedback', 'project', 'reference')),
             content TEXT NOT NULL,
             project TEXT,
+            strength INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -62,6 +63,16 @@ fn initialize(conn: &Connection) -> Result<()> {
         );
         ",
     )?;
+
+    // Migration: add strength column to existing databases
+    let has_strength: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('memories') WHERE name = 'strength'",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_strength {
+        conn.execute_batch("ALTER TABLE memories ADD COLUMN strength INTEGER NOT NULL DEFAULT 1")?;
+    }
 
     // Create FTS5 virtual table if it doesn't exist
     let fts_exists: bool = conn.query_row(

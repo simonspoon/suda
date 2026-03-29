@@ -89,6 +89,7 @@ fn recall_json_output() {
     assert_eq!(parsed[0]["name"], "terse");
     assert_eq!(parsed[0]["type"], "feedback");
     assert_eq!(parsed[0]["content"], "keep responses short");
+    assert_eq!(parsed[0]["strength"], 1);
 }
 
 #[test]
@@ -381,6 +382,11 @@ fn export_import_roundtrip() {
         "be terse",
     ]);
 
+    // Reinforce "role" so strength > 1
+    env.stdout(&["reinforce", "1"]);
+    env.stdout(&["reinforce", "1"]);
+    // role should now have strength 3, style stays at 1
+
     // Export to JSON
     let exported = env.stdout(&["export", "--format", "json"]);
     let parsed: Vec<serde_json::Value> = serde_json::from_str(&exported).unwrap();
@@ -394,10 +400,29 @@ fn export_import_roundtrip() {
     let env2 = TestEnv::new("export-import-target");
     env2.stdout(&["import", export_path.to_str().unwrap()]);
 
-    // Verify imported
+    // Verify imported memories preserve strength
     let out = env2.stdout(&["recall", "--json"]);
     let imported: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
     assert_eq!(imported.len(), 2);
+
+    // Find the "role" memory and verify its strength survived
+    let role = imported
+        .iter()
+        .find(|m| m["name"] == "role")
+        .expect("role memory not found");
+    assert_eq!(
+        role["strength"], 3,
+        "reinforced strength should survive export/import"
+    );
+
+    let style = imported
+        .iter()
+        .find(|m| m["name"] == "style")
+        .expect("style memory not found");
+    assert_eq!(
+        style["strength"], 1,
+        "default strength should survive export/import"
+    );
 }
 
 #[test]
@@ -702,6 +727,129 @@ fn state_legacy_and_keys_coexist() {
     // Legacy state still accessible via list
     let out = env.stdout(&["state", "list"]);
     assert!(out.contains("session-state"));
+}
+
+// --- Strength / Reinforce ---
+
+#[test]
+fn store_has_default_strength() {
+    let env = TestEnv::new("store-default-strength");
+    env.stdout(&[
+        "store",
+        "--type",
+        "user",
+        "--name",
+        "role",
+        "--description",
+        "user role",
+        "rust developer",
+    ]);
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0]["strength"], 1);
+}
+
+#[test]
+fn reinforce_increments_strength() {
+    let env = TestEnv::new("reinforce-increment");
+    env.stdout(&[
+        "store",
+        "--type",
+        "user",
+        "--name",
+        "role",
+        "--description",
+        "user role",
+        "rust developer",
+    ]);
+
+    // First reinforce: 1 -> 2
+    let out = env.stdout(&["reinforce", "1"]);
+    assert!(out.contains("Reinforced memory 1"));
+    assert!(out.contains("strength: 2"));
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["strength"], 2);
+
+    // Second reinforce: 2 -> 3
+    let out = env.stdout(&["reinforce", "1"]);
+    assert!(out.contains("strength: 3"));
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["strength"], 3);
+}
+
+#[test]
+fn reinforce_nonexistent() {
+    let env = TestEnv::new("reinforce-nonexistent");
+    let out = env.stdout(&["reinforce", "999"]);
+    assert!(out.contains("not found"));
+}
+
+#[test]
+fn reinforce_set_explicit() {
+    let env = TestEnv::new("reinforce-set");
+    env.stdout(&[
+        "store",
+        "--type",
+        "user",
+        "--name",
+        "role",
+        "--description",
+        "user role",
+        "rust developer",
+    ]);
+
+    // Set strength to exactly 5
+    let out = env.stdout(&["reinforce", "1", "--set", "5"]);
+    assert!(out.contains("Reinforced memory 1"));
+    assert!(out.contains("strength: 5"));
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["strength"], 5);
+
+    // Set to a different value
+    let out = env.stdout(&["reinforce", "1", "--set", "1"]);
+    assert!(out.contains("strength: 1"));
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed[0]["strength"], 1);
+}
+
+#[test]
+fn reinforce_updated_at_changes() {
+    let env = TestEnv::new("reinforce-updated-at");
+    env.stdout(&[
+        "store",
+        "--type",
+        "user",
+        "--name",
+        "role",
+        "--description",
+        "user role",
+        "rust developer",
+    ]);
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    let before = parsed[0]["updated_at"].as_str().unwrap().to_string();
+
+    // Sleep to ensure SQLite datetime('now') produces a different second
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    env.stdout(&["reinforce", "1"]);
+
+    let out = env.stdout(&["recall", "--json"]);
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&out).unwrap();
+    let after = parsed[0]["updated_at"].as_str().unwrap().to_string();
+
+    assert_ne!(before, after, "updated_at should change after reinforce");
 }
 
 // --- Isolation ---

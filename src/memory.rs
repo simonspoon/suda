@@ -1,6 +1,10 @@
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
+fn default_strength() -> i64 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Memory {
     pub id: i64,
@@ -10,6 +14,8 @@ pub struct Memory {
     pub memory_type: String,
     pub content: String,
     pub project: Option<String>,
+    #[serde(default = "default_strength")]
+    pub strength: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -50,7 +56,7 @@ fn recall_fts(
     limit: i64,
 ) -> Result<Vec<Memory>> {
     let mut sql = String::from(
-        "SELECT m.id, m.name, m.description, m.type, m.content, m.project, m.created_at, m.updated_at
+        "SELECT m.id, m.name, m.description, m.type, m.content, m.project, m.strength, m.created_at, m.updated_at
          FROM memories m
          JOIN memories_fts f ON m.id = f.rowid
          WHERE memories_fts MATCH ?1",
@@ -85,7 +91,7 @@ fn recall_recent(
     limit: i64,
 ) -> Result<Vec<Memory>> {
     let mut sql = String::from(
-        "SELECT id, name, description, type, content, project, created_at, updated_at FROM memories WHERE 1=1",
+        "SELECT id, name, description, type, content, project, strength, created_at, updated_at FROM memories WHERE 1=1",
     );
     let mut idx = 1;
     if memory_type.is_some() {
@@ -118,15 +124,15 @@ fn row_to_memory(row: &rusqlite::Row<'_>) -> Result<Memory> {
         memory_type: row.get(3)?,
         content: row.get(4)?,
         project: row.get(5)?,
-        created_at: row.get(6)?,
-        updated_at: row.get(7)?,
+        strength: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
     })
 }
 
-#[allow(dead_code)]
 pub fn get(conn: &Connection, id: i64) -> Result<Option<Memory>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, description, type, content, project, created_at, updated_at FROM memories WHERE id = ?1",
+        "SELECT id, name, description, type, content, project, strength, created_at, updated_at FROM memories WHERE id = ?1",
     )?;
     let mut rows = stmt.query_map(params![id], row_to_memory)?;
     match rows.next() {
@@ -182,6 +188,22 @@ pub fn update(
     Ok(changed > 0)
 }
 
+pub fn reinforce(conn: &Connection, id: i64) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE memories SET strength = strength + 1, updated_at = datetime('now') WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(changed > 0)
+}
+
+pub fn reinforce_set(conn: &Connection, id: i64, value: i64) -> Result<bool> {
+    let changed = conn.execute(
+        "UPDATE memories SET strength = ?2, updated_at = datetime('now') WHERE id = ?1",
+        params![id, value],
+    )?;
+    Ok(changed > 0)
+}
+
 pub fn forget(conn: &Connection, id: i64) -> Result<bool> {
     let changed = conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
     Ok(changed > 0)
@@ -199,14 +221,15 @@ pub fn import(conn: &Connection, memories: &[Memory]) -> Result<usize> {
     let mut count = 0;
     for m in memories {
         conn.execute(
-            "INSERT INTO memories (name, description, type, content, project, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO memories (name, description, type, content, project, strength, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 m.name,
                 m.description,
                 m.memory_type,
                 m.content,
                 m.project,
+                m.strength,
                 m.created_at,
                 m.updated_at,
             ],
